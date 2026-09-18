@@ -37,12 +37,12 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.lifecycle.ViewTreeLifecycleOwner
+import androidx.lifecycle.ViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.savedstate.ViewTreeSavedStateRegistryOwner
 import com.example.amliquidass.ModuleConstants
 import com.example.amliquidass.compose.LiquidBottomTab
 import com.example.amliquidass.compose.LiquidBottomTabs
@@ -124,42 +124,48 @@ private object PhoneLiquidGlassStyler {
 
     fun installBottomNavigation(root: ViewGroup) {
         root.post {
-            val tabsFrame = findByIdRecursive(root, BOTTOM_NAVIGATION_TABS_FRAME)
-                ?: findByIdRecursive(root, BOTTOM_NAVIGATION)
-            if (tabsFrame == null) {
-                ModernXposedRuntime.log("phone liquid-glass: bottom_navigation_tabs_frame not resolved")
-                return@post
+            try {
+                installBottomNavigationUnsafe(root)
+            } catch (error: Throwable) {
+                ModernXposedRuntime.log("phone liquid-glass: install failed", error)
             }
-            val parent = tabsFrame.parent as? ViewGroup
-            if (parent == null) {
-                ModernXposedRuntime.log("phone liquid-glass: tabs frame has no ViewGroup parent")
-                return@post
-            }
-            if (findExistingComposeView(parent) != null) return@post
-
-            val amTabs = collectOriginalTabs(tabsFrame)
-            tabsFrame.visibility = View.INVISIBLE
-
-            val composeView = createComposeView(root.context, amTabs)
-            val lp = FrameLayout.LayoutParams(
-                tabsFrame.layoutParams.width.takeIf { it > 0 }?.let { it }
-                    ?: ViewGroup.LayoutParams.MATCH_PARENT,
-                tabsFrame.layoutParams.height.takeIf { it > 0 }?.let { it }
-                    ?: ViewGroup.LayoutParams.WRAP_CONTENT,
-            )
-            parent.addView(composeView, lp)
-            ModernXposedRuntime.log(
-                "phone liquid-glass: installed ComposeView bottom bar (amTabs=${amTabs.size})",
-            )
         }
     }
 
-    private fun findExistingComposeView(parent: ViewGroup): ComposeView? {
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            if (child is ComposeView && child.id == R_ID_COMPOSE_BOTTOM_BAR) return child
+    private fun installBottomNavigationUnsafe(root: ViewGroup) {
+        val tabsFrame = findByIdRecursive(root, BOTTOM_NAVIGATION_TABS_FRAME)
+            ?: findByIdRecursive(root, BOTTOM_NAVIGATION)
+        if (tabsFrame == null) {
+            ModernXposedRuntime.log("phone liquid-glass: bottom_navigation_tabs_frame not resolved")
+            return
         }
-        return null
+        // Use the root (bottom_navigation) as the ComposeView's parent.
+        // We previously tried tabsFrame.parent but AM's custom view tree
+        // may reject non-AM children inside the tabs frame's parent.
+        if (findExistingComposeView(root) != null) return
+
+        val amTabs = collectOriginalTabs(tabsFrame)
+        tabsFrame.visibility = View.INVISIBLE
+
+        val composeView = createComposeView(root.context, amTabs)
+        // Use the simplest possible LayoutParams (base ViewGroup.LayoutParams)
+        // and MATCH_PARENT x WRAP_CONTENT — the parent will convert via
+        // generateLayoutParams() if it needs a more specific type.
+        val lp = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+        root.addView(composeView, lp)
+        ModernXposedRuntime.log(
+            "phone liquid-glass: installed ComposeView bottom bar (amTabs=${amTabs.size})",
+        )
+    }
+
+    private fun findExistingComposeView(root: ViewGroup): ComposeView? {
+        // Use a String tag (set in createComposeView) instead of a numeric ID,
+        // to avoid any collision with AM's resource IDs.
+        val found = root.findViewWithTag(COMPOSE_TAG) as? ComposeView
+        return found
     }
 
     /**
@@ -193,10 +199,13 @@ private object PhoneLiquidGlassStyler {
     ): ComposeView {
         val owner = ComposeLifecycleOwner()
         return ComposeView(context).apply {
-            id = R_ID_COMPOSE_BOTTOM_BAR
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeViewModelStoreOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
+            tag = COMPOSE_TAG
+            // Use the static set() methods (not the deprecated Kotlin
+            // extension functions) to install the ViewTree owners — these
+            // have been the stable API since lifecycle 2.8.0.
+            ViewTreeLifecycleOwner.set(this, owner)
+            ViewTreeViewModelStoreOwner.set(this, owner)
+            ViewTreeSavedStateRegistryOwner.set(this, owner)
             setContent {
                 MaterialTheme {
                     AmLiquidBottomBar(amTabs = amTabs)
@@ -219,7 +228,7 @@ private object PhoneLiquidGlassStyler {
         return null
     }
 
-    private const val R_ID_COMPOSE_BOTTOM_BAR = 0x7fffa001
+    private const val COMPOSE_TAG = "amliquidass.compose.bottom_bar"
 }
 
 /**

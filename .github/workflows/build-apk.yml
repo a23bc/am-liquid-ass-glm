@@ -27,18 +27,19 @@ jobs:
 
       - name: Ensure Android SDK packages
         run: |
-          # ubuntu-latest ships with platforms;android-35 + build-tools;35.0.0
-          # + platform-tools pre-installed. Run sdkmanager directly to
-          # accept licenses + fill in any missing piece — we deliberately
-          # avoid android-actions/setup-android@v3 because it mishandles
-          # the multiline `packages:` input on the runner's cmdline-tools/16.0.
+          # backdrop 2.0.1 transitively pulls androidx.compose 1.12.0,
+          # which requires compileSdk 37 + build-tools 37.0.0.
+          # ubuntu-latest doesn't ship these pre-installed, so we
+          # install them via sdkmanager directly. We deliberately avoid
+          # android-actions/setup-android@v3 — its multiline `packages:`
+          # parser mishandles the input on cmdline-tools/16.0.
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
           fi
           echo "Using sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          for pkg in "platforms;android-35" "build-tools;35.0.0" "platform-tools"; do
+          for pkg in "platforms;android-37" "build-tools;37.0.0" "platform-tools"; do
             "$SDKMANAGER" --install "$pkg" || echo "ignored: $pkg (likely already installed)"
           done
           "$SDKMANAGER" --list_installed || true

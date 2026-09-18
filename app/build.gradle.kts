@@ -30,13 +30,13 @@ val releaseSigningAvailable = listOf(
 
 android {
     namespace = "com.example.amliquidass"
-    compileSdk = 35
-    buildToolsVersion = "35.0.0"
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.example.amliquidass"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 2
         versionName = "1.1.0"
     }

@@ -127,7 +127,16 @@ private object PhoneLiquidGlassStyler {
             try {
                 installBottomNavigationUnsafe(root)
             } catch (error: Throwable) {
-                ModernXposedRuntime.log("phone liquid-glass: install failed", error)
+                // Inline the exception type + message into the log string
+                // itself — LSPosed prepends a "[com.example.amliquidass,...]"
+                // tag to every log line, so the actual exception line
+                // (which doesn't contain "amliquidass") gets filtered out
+                // by `adb logcat | findstr amliquidass`. Folding the type
+                // and message into our own string keeps it visible.
+                ModernXposedRuntime.log(
+                    "phone liquid-glass: install failed: " +
+                        "${error.javaClass.name}: ${error.message.orEmpty()}"
+                )
             }
         }
     }

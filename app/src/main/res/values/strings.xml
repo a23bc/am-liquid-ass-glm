@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AMLiquidAss</string>
+    <string name="xposed_description">真·液态玻璃（基于 AndroidLiquidGlass/backdrop 的 AGSL 着色器）应用于 Apple Music 手机端底栏与 mini player</string>
+</resources>

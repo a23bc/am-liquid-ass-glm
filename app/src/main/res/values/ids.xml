@@ -1,0 +1,4 @@
+<resources>
+    <!-- Liquid glass effect tag marker; reserved for future use. -->
+    <item name="amliquidass_glass_applied" type="id" />
+</resources>

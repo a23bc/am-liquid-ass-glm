@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val releaseSigningPropertiesFile = rootProject.file("keystore.properties")
@@ -36,8 +37,8 @@ android {
         applicationId = "com.example.amliquidass"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
     }
 
     signingConfigs {
@@ -58,9 +59,6 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // Fall back to debug signing so the release APK is installable
-            // out-of-the-box. Provide a real keystore via env vars or
-            // keystore.properties to override.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
         }
@@ -71,17 +69,54 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        compose = true
+    }
+
     packaging {
         resources {
             merges += "META-INF/xposed/*"
+            // backdrop + compose artifacts ship duplicate meta-inf files
+            excludes += arrayOf(
+                "META-INF/{AL2.0,LGPL2.1}",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/*.kotlin_module",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            )
         }
     }
 }
 
 dependencies {
+    // libxposed 102 — required for the Xposed module entry
     compileOnly("io.github.libxposed:api:102.0.0")
     compileOnly("io.github.libxposed:service:102.0.0")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+
+    // Kotlin + coroutines
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // AndroidX foundation — required to host a ComposeView inside Apple Music's view tree
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-runtime:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.8.7")
+    implementation("androidx.savedstate:savedstate:1.2.1")
+
+    // AndroidX Compose UI — runtime for hosting the AndroidLiquidGlass components
+    implementation("androidx.compose.ui:ui:1.7.5")
+    implementation("androidx.compose.ui:ui-graphics:1.7.5")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.7.5")
+    implementation("androidx.compose.foundation:foundation:1.7.5")
+    implementation("androidx.compose.material:material:1.7.5")
+    implementation("androidx.compose.material:material-icons-core:1.7.5")
+
+    // backdrop library — real liquid-glass shaders (vibrancy + blur + lens + highlight)
+    implementation("io.github.kyant0:backdrop:2.0.1")
+    // kyant shapes — Capsule + other SDF shapes used by LiquidBottomTabs
+    implementation("io.github.kyant0:shapes:1.2.1")
 }

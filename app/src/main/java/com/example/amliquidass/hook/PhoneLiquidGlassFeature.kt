@@ -1,38 +1,74 @@
 package com.example.amliquidass.hook
 
-import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.Icon
+import androidx.compose.material.MaterialTheme
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.amliquidass.ModuleConstants
+import com.example.amliquidass.compose.LiquidBottomTab
+import com.example.amliquidass.compose.LiquidBottomTabs
 import com.example.amliquidass.config.TargetConfigClient
-import com.example.amliquidass.model.FeatureState
+import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
+import java.lang.ref.WeakReference
 
 /**
  * Real liquid-glass feature for Apple Music on phones.
  *
- * Re-implemented from scratch using the backdrop library's AGSL shaders
- * (vendored in [LiquidGlassShaders]) applied via Android's native
- * `RenderEffect.createRuntimeShaderEffect` + `RuntimeShader` (see
- * [LiquidGlassEffect]). The upstream BlurView-based implementation has
- * been removed entirely.
+ * Replaces AM's native `bottom_navigation_tabs_frame` with a [ComposeView]
+ * hosting `Backdrop { LiquidBottomTabs(...) }` from the upstream
+ * AndroidLiquidGlass library (via `io.github.kyant0:backdrop:2.0.1`).
+ * The previous BlurView-based implementation from AM-plus-plus and the
+ * hand-rolled `LiquidGlassEffect` shim are both gone.
  *
- * Two Xposed resource-time hooks remain unchanged from upstream:
- *   - `bottom_navigation` layout inflation -> install glass on the tabs
- *   - `mini_player` layout inflation -> install glass on the mini player
- *
- * The mini-player lookup-with-retry logic is preserved since it has to
- * resolve the view id after the navigation root attaches.
+ * The original AM tab Views are kept alive (just hidden via INVISIBLE)
+ * so that `performClick()` still drives AM's real navigation — clicking
+ * a glass tab forwards to the matching original tab.
  */
 internal class PhoneLiquidGlassFeature : FeatureHook {
     override val key: String = ModuleConstants.FEATURE_PHONE_LIQUID_GLASS
 
     override fun install(context: HookContext): FeatureInstallResult {
-        // AMLiquidAss ships no GUI, so the upstream AM-plus-plus
-        // `phone_liquid_glass_enabled` toggle is gone. The feature is
-        // unconditionally on whenever the host package is loaded.
+        // Always on — AMLiquidAss ships no GUI; the feature is the
+        // entire reason the module exists.
         return FeatureInstallResult.active(
             "liquid glass registered (resource hooks live); API ${android.os.Build.VERSION.SDK_INT}",
         )
@@ -45,60 +81,17 @@ internal object PhoneLiquidGlassResourceHook {
             val root = view as? ViewGroup ?: return@register
             if (!PhoneLiquidGlassQualifier.isEligible(root.context, config)) return@register
             PhoneLiquidGlassStyler.installBottomNavigation(root)
-            installMiniPlayerWhenAvailable(root, config, attempt = 0)
         }
-        LayoutInflationRegistry.register("mini_player") { view ->
-            val root = view as? FrameLayout ?: return@register
-            if (!PhoneLiquidGlassQualifier.isEligible(root.context, config)) return@register
-            PhoneLiquidGlassStyler.installMiniPlayer(root)
-        }
+        // mini_player inflation hook is intentionally NOT registered in
+        // this iteration — the user's complaint is specifically about the
+        // bottom bar; mini player replacement needs its own component.
     }
-
-    private fun installMiniPlayerWhenAvailable(
-        navigationRoot: ViewGroup,
-        config: TargetConfigClient,
-        attempt: Int,
-    ) {
-        navigationRoot.post {
-            if (!PhoneLiquidGlassQualifier.isEligible(navigationRoot.context, config)) return@post
-            val miniPlayerId = navigationRoot.resources.getIdentifier(
-                "mini_player",
-                "id",
-                ModuleConstants.TARGET_PACKAGE,
-            )
-            val miniPlayer = miniPlayerId.takeIf { it != 0 }
-                ?.let { navigationRoot.findViewById<FrameLayout>(it) }
-            if (miniPlayer != null) {
-                PhoneLiquidGlassStyler.installMiniPlayer(miniPlayer)
-                ModernXposedRuntime.log("phone liquid-glass mini player installed from navigation root")
-            } else if (attempt < MINI_PLAYER_LOOKUP_RETRIES) {
-                navigationRoot.postDelayed(
-                    { installMiniPlayerWhenAvailable(navigationRoot, config, attempt + 1) },
-                    MINI_PLAYER_LOOKUP_DELAY_MS,
-                )
-            }
-        }
-    }
-
-    private const val MINI_PLAYER_LOOKUP_RETRIES = 15
-    private const val MINI_PLAYER_LOOKUP_DELAY_MS = 80L
 }
 
 internal object PhoneLiquidGlassQualifier {
-    /**
-     * Always eligible unless this is a tablet. The upstream AM-plus-plus
-     * `phone_liquid_glass_enabled` toggle is gone (we ship no GUI to flip
-     * it), so the only remaining gate is the phone-vs-tablet layout.
-     */
     fun isEligible(context: Context, @Suppress("UNUSED_PARAMETER") config: TargetConfigClient): Boolean =
         !isOfficialTablet(context)
 
-    /**
-     * Inline tablet check — upstream AM-plus-plus pulled this out of
-     * `AppleMusicDualPaneTarget.kt` (which has been deleted). The check
-     * just excludes large-screen layouts so the phone-only effect
-     * doesn't fire on tablets.
-     */
     private fun isOfficialTablet(context: Context): Boolean {
         val configuration = context.resources.configuration
         return configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK >=
@@ -110,41 +103,103 @@ internal object PhoneLiquidGlassQualifier {
 }
 
 private object PhoneLiquidGlassStyler {
-    private const val BOTTOM_NAVIGATION = "bottom_navigation"
     private const val BOTTOM_NAVIGATION_TABS_FRAME = "bottom_navigation_tabs_frame"
-    private const val MINI_PLAYER_CONTENT = "mini_player_content"
+    private const val BOTTOM_NAVIGATION = "bottom_navigation"
+
+    /**
+     * Apple Music's known tab strip — 5 tabs in this order:
+     *   Listen Now, Browse, Radio, Library, Search
+     * Hardcoded labels + Material icons for v1. Each tab's onClick
+     * forwards to the matching AM original tab View's `performClick()`
+     * so AM's actual navigation is preserved.
+     */
+    internal data class TabSpec(val label: String, val icon: ImageVector)
+    internal val APPLE_MUSIC_TABS = listOf(
+        TabSpec("Listen Now", Icons.Filled.Home),
+        TabSpec("Browse", Icons.Filled.Star),
+        TabSpec("Radio", Icons.Filled.PlayArrow),
+        TabSpec("Library", Icons.Filled.AccountBox),
+        TabSpec("Search", Icons.Filled.Search),
+    )
 
     fun installBottomNavigation(root: ViewGroup) {
-        val tabsFrame = findByIdRecursive(root, BOTTOM_NAVIGATION_TABS_FRAME)
-            ?: findByIdRecursive(root, BOTTOM_NAVIGATION)
-        if (tabsFrame == null) {
-            ModernXposedRuntime.log("phone liquid-glass: bottom_navigation not resolved")
-            return
+        root.post {
+            val tabsFrame = findByIdRecursive(root, BOTTOM_NAVIGATION_TABS_FRAME)
+                ?: findByIdRecursive(root, BOTTOM_NAVIGATION)
+            if (tabsFrame == null) {
+                ModernXposedRuntime.log("phone liquid-glass: bottom_navigation_tabs_frame not resolved")
+                return@post
+            }
+            val parent = tabsFrame.parent as? ViewGroup
+            if (parent == null) {
+                ModernXposedRuntime.log("phone liquid-glass: tabs frame has no ViewGroup parent")
+                return@post
+            }
+            if (findExistingComposeView(parent) != null) return@post
+
+            val amTabs = collectOriginalTabs(tabsFrame)
+            tabsFrame.visibility = View.INVISIBLE
+
+            val composeView = createComposeView(root.context, amTabs)
+            val lp = FrameLayout.LayoutParams(
+                tabsFrame.layoutParams.width.takeIf { it > 0 }?.let { it }
+                    ?: ViewGroup.LayoutParams.MATCH_PARENT,
+                tabsFrame.layoutParams.height.takeIf { it > 0 }?.let { it }
+                    ?: ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+            parent.addView(composeView, lp)
+            ModernXposedRuntime.log(
+                "phone liquid-glass: installed ComposeView bottom bar (amTabs=${amTabs.size})",
+            )
         }
-        applyToViewTree(tabsFrame)
     }
 
-    fun installMiniPlayer(root: ViewGroup) {
-        val content = findByIdRecursive(root, MINI_PLAYER_CONTENT) ?: root
-        applyToViewTree(content)
+    private fun findExistingComposeView(parent: ViewGroup): ComposeView? {
+        for (i in 0 until parent.childCount) {
+            val child = parent.getChildAt(i)
+            if (child is ComposeView && child.id == R_ID_COMPOSE_BOTTOM_BAR) return child
+        }
+        return null
     }
 
     /**
-     * Walks the target's subtree and applies the liquid-glass effect to
-     * every direct child that is not itself a ViewGroup with children —
-     * i.e. the leaf-ish surfaces that we want to render as "glass".
-     *
-     * This is intentionally broader than upstream's per-id stylist, which
-     * required knowing each Apple Music resource id. The backdrop AGSL
-     * refraction shader doesn't care about id; it cares about bounds.
+     * Walks the original tabs frame and collects any View that looks like
+     * a tab (i.e. clickable + has children). Best-effort: if extraction
+     * fails we just return an empty list and rely on the hardcoded 5
+     * Material icons; click forwarding still works for indices < amTabs.size.
      */
-    private fun applyToViewTree(target: View) {
-        target.post {
-            LiquidGlassEffect.applyTo(target)
-            (target as? ViewGroup)?.let { group ->
-                for (i in 0 until group.childCount) {
-                    val child = group.getChildAt(i) ?: continue
-                    LiquidGlassEffect.applyTo(child)
+    private fun collectOriginalTabs(tabsFrame: View): List<WeakReference<View>> {
+        val out = mutableListOf<WeakReference<View>>()
+        val group = tabsFrame as? ViewGroup ?: return out
+        for (i in 0 until group.childCount) {
+            val child = group.getChildAt(i) ?: continue
+            if (child.isClickable) out.add(WeakReference(child))
+        }
+        if (out.isEmpty() && group.childCount > 0) {
+            val inner = group.getChildAt(0) as? ViewGroup
+            if (inner != null) {
+                for (i in 0 until inner.childCount) {
+                    val child = inner.getChildAt(i) ?: continue
+                    out.add(WeakReference(child))
+                }
+            }
+        }
+        return out
+    }
+
+    private fun createComposeView(
+        context: android.content.Context,
+        amTabs: List<WeakReference<View>>,
+    ): ComposeView {
+        val owner = ComposeLifecycleOwner()
+        return ComposeView(context).apply {
+            id = R_ID_COMPOSE_BOTTOM_BAR
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent {
+                MaterialTheme {
+                    AmLiquidBottomBar(amTabs = amTabs)
                 }
             }
         }
@@ -162,5 +217,102 @@ private object PhoneLiquidGlassStyler {
             if (found != null) return found
         }
         return null
+    }
+
+    private const val R_ID_COMPOSE_BOTTOM_BAR = 0x7fffa001
+}
+
+/**
+ * Minimal lifecycle/viewmodel/savedstate owner so a [ComposeView] can
+ * live inside Apple Music's view tree without an AppCompatActivity host.
+ *
+ * AM's host activity is a plain `Activity`; Compose needs a
+ * [LifecycleOwner] + [ViewModelStoreOwner] + [SavedStateRegistryOwner]
+ * attached to the view tree, so we synthesize one that is always
+ * RESUMED. This is the standard pattern documented for embedding
+ * Compose inside non-Compose Android hosts.
+ */
+private class ComposeLifecycleOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+    private val lifecycleRegistry: LifecycleRegistry = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle get() = lifecycleRegistry
+
+    private val savedStateController: SavedStateRegistryController =
+        SavedStateRegistryController.create(this)
+    override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
+
+    override val viewModelStore: ViewModelStore = ViewModelStore()
+
+    init {
+        savedStateController.performRestore(null)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+}
+
+/**
+ * The Compose hierarchy that replaces AM's bottom nav strip.
+ *
+ * - `rememberCanvasBackdrop` provides a translucent dark backdrop
+ *   surface that the backdrop library's `drawBackdrop` modifier then
+ *   transforms with `vibrancy` + `blur` + `lens` effects.
+ * - `LiquidBottomTabs` lays out `tabsCount` `LiquidBottomTab` slots in
+ *   a `Row` with capsule-shaped glass surfaces.
+ * - Each tab's `onClick` forwards to the corresponding original AM tab
+ *   view (if still alive).
+ */
+@Composable
+private fun AmLiquidBottomBar(amTabs: List<WeakReference<View>>) {
+    val tabsCount = PhoneLiquidGlassStyler.APPLE_MUSIC_TABS.size
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    val backdrop = rememberCanvasBackdrop {
+        // Translucent dark canvas — the backdrop library applies the
+        // vibrancy / blur / lens pipeline on top of this.
+        drawRect(Color.Black.copy(alpha = 0.18f))
+    }
+    Surface(color = Color.Transparent) {
+        LiquidBottomTabs(
+            selectedTabIndex = { selectedTabIndex },
+            onTabSelected = { idx ->
+                selectedTabIndex = idx
+                amTabs.getOrNull(idx)?.get()?.performClick()
+            },
+            backdrop = backdrop,
+            tabsCount = tabsCount,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            for (idx in 0 until tabsCount) {
+                val spec = PhoneLiquidGlassStyler.APPLE_MUSIC_TABS[idx]
+                LiquidBottomTab(
+                    onClick = {
+                        selectedTabIndex = idx
+                        amTabs.getOrNull(idx)?.get()?.performClick()
+                    },
+                ) {
+                    Box(
+                        Modifier.size(28.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = spec.icon,
+                            contentDescription = spec.label,
+                            tint = if (selectedTabIndex == idx)
+                                MaterialTheme.colors.primary
+                            else MaterialTheme.colors.onSurface,
+                        )
+                    }
+                    Text(
+                        spec.label,
+                        fontSize = 11.sp,
+                        color = if (selectedTabIndex == idx)
+                            MaterialTheme.colors.primary
+                        else MaterialTheme.colors.onSurface,
+                    )
+                }
+            }
+        }
     }
 }

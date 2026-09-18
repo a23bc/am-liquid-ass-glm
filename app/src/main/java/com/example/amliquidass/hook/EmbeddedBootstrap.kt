@@ -7,7 +7,14 @@ import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/** Exact-version bootstrap for the embedded-only artifact. */
+/**
+ * Bootstrap for the embedded-only artifact.
+ *
+ * AMLiquidAss lifts the upstream AM-plus-plus version gate (which only
+ * accepted Apple Music 6.5.1 / 6.5.2). Any installed Apple Music build
+ * is now accepted — the worst case is the layout-inflation hooks miss
+ * a renamed resource id and the effect silently no-ops.
+ */
 internal class EmbeddedBootstrap {
     private val prepared = AtomicBoolean(false)
     private val deferredReader = DeferredConfigurationReader()
@@ -32,11 +39,7 @@ internal class EmbeddedBootstrap {
     }
 
     fun supports(build: TargetBuild): Boolean =
-        build.packageName == ModuleConstants.TARGET_PACKAGE &&
-            SUPPORTED_BUILDS.any { supported ->
-                build.versionName == supported.versionName &&
-                    build.versionCode == supported.versionCode
-            }
+        build.packageName == ModuleConstants.TARGET_PACKAGE
 
     private class DeferredConfigurationReader : ConfigurationReader {
         private val delegate = AtomicReference<ConfigurationReader?>(null)
@@ -49,12 +52,5 @@ internal class EmbeddedBootstrap {
 
         override fun openFileDescriptor(name: String): ParcelFileDescriptor? =
             delegate.get()?.openFileDescriptor(name)
-    }
-
-    private companion object {
-        private val SUPPORTED_BUILDS = listOf(
-            TargetBuild(ModuleConstants.TARGET_PACKAGE, "6.5.1", 1583L),
-            TargetBuild(ModuleConstants.TARGET_PACKAGE, "6.5.2", 1586L),
-        )
     }
 }

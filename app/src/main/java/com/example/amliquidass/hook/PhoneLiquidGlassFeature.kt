@@ -30,10 +30,9 @@ internal class PhoneLiquidGlassFeature : FeatureHook {
     override val key: String = ModuleConstants.FEATURE_PHONE_LIQUID_GLASS
 
     override fun install(context: HookContext): FeatureInstallResult {
-        val settings = context.config.settings()
-        if (!settings.phoneLiquidGlassEnabled) {
-            return FeatureInstallResult.disabled()
-        }
+        // AMLiquidAss ships no GUI, so the upstream AM-plus-plus
+        // `phone_liquid_glass_enabled` toggle is gone. The feature is
+        // unconditionally on whenever the host package is loaded.
         return FeatureInstallResult.active(
             "liquid glass registered (resource hooks live); API ${android.os.Build.VERSION.SDK_INT}",
         )
@@ -86,8 +85,13 @@ internal object PhoneLiquidGlassResourceHook {
 }
 
 internal object PhoneLiquidGlassQualifier {
-    fun isEligible(context: Context, config: TargetConfigClient): Boolean =
-        !isOfficialTablet(context) && config.settings().phoneLiquidGlassEnabled
+    /**
+     * Always eligible unless this is a tablet. The upstream AM-plus-plus
+     * `phone_liquid_glass_enabled` toggle is gone (we ship no GUI to flip
+     * it), so the only remaining gate is the phone-vs-tablet layout.
+     */
+    fun isEligible(context: Context, @Suppress("UNUSED_PARAMETER") config: TargetConfigClient): Boolean =
+        !isOfficialTablet(context)
 
     /**
      * Inline tablet check — upstream AM-plus-plus pulled this out of

@@ -12,13 +12,15 @@ import com.example.amliquidass.CurrentSongDetails
  *
  * `TargetCurrentSong.details` is preserved so HookEntry's existing
  * `currentSong = { currentSong.current()?.details }` call site stays
- * source-compatible.
+ * source-compatible. Both classes are `internal` because
+ * `CurrentSongDetails` itself is internal — a public class would
+ * leak an internal type through its members.
  */
-data class TargetCurrentSong(
+internal data class TargetCurrentSong(
     val details: CurrentSongDetails? = null,
 )
 
-class CurrentSongIdentityCache {
+internal class CurrentSongIdentityCache {
     @Volatile
     private var current: TargetCurrentSong = TargetCurrentSong()
 

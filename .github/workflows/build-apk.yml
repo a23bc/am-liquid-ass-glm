@@ -11,6 +11,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,13 +25,23 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
-            platform-tools
+      - name: Ensure Android SDK packages
+        run: |
+          # ubuntu-latest ships with platforms;android-35 + build-tools;35.0.0
+          # + platform-tools pre-installed. Run sdkmanager directly to
+          # accept licenses + fill in any missing piece — we deliberately
+          # avoid android-actions/setup-android@v3 because it mishandles
+          # the multiline `packages:` input on the runner's cmdline-tools/16.0.
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)"
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          for pkg in "platforms;android-35" "build-tools;35.0.0" "platform-tools"; do
+            "$SDKMANAGER" --install "$pkg" || echo "ignored: $pkg (likely already installed)"
+          done
+          "$SDKMANAGER" --list_installed || true
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew

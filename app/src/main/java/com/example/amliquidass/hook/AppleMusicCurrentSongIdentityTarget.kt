@@ -1,5 +1,7 @@
 package com.example.amliquidass.hook
 
+import com.example.amliquidass.CurrentSongDetails
+
 /**
  * Lightweight current-song identity cache.
  *
@@ -7,11 +9,13 @@ package com.example.amliquidass.hook
  * `AppleMusicCurrentSongIdentityTarget` install target (the latter was
  * tied to custom-lyrics replacement). Only the cache type is needed by
  * HookEntry, so the target class has been dropped.
+ *
+ * `TargetCurrentSong.details` is preserved so HookEntry's existing
+ * `currentSong = { currentSong.current()?.details }` call site stays
+ * source-compatible.
  */
 data class TargetCurrentSong(
-    val appleMusicId: String? = null,
-    val title: String? = null,
-    val artist: String? = null,
+    val details: CurrentSongDetails? = null,
 )
 
 class CurrentSongIdentityCache {

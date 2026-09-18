@@ -11,6 +11,12 @@ data class TargetBuild(
     val versionName: String,
     val versionCode: Long,
 ) {
+    /**
+     * Human-readable build identifier for log lines — matches the
+     * upstream AM-plus-plus format `versionName (versionCode)`.
+     */
+    val displayName: String get() = "$versionName ($versionCode)"
+
     companion object {
         val UNKNOWN = TargetBuild("", "", 0L)
     }

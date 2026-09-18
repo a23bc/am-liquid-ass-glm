@@ -34,16 +34,17 @@ internal object EmbeddedSettingsFragmentMethodResolver {
         val candidates = buildList {
             var current: Class<*>? = type
             while (current != null) {
-                if (current.name.startsWith("androidx.preference.")) {
+                val currentClass: Class<*> = current
+                if (currentClass.name.startsWith("androidx.preference.")) {
                     runCatching {
-                        current.declaredMethods
+                        currentClass.declaredMethods
                             .filter { method ->
                                 method.parameterTypes.contentEquals(arrayOf(Int::class.javaPrimitiveType)) &&
                                     method.returnType == Void.TYPE
                             }
                     }.getOrDefault(emptyList()).let(::addAll)
                 }
-                current = current.superclass
+                current = currentClass.superclass
             }
         }.distinctBy(Method::toGenericString)
 
@@ -54,10 +55,11 @@ internal object EmbeddedSettingsFragmentMethodResolver {
     fun findOnResume(type: Class<*>): Method? {
         var current: Class<*>? = type
         while (current != null) {
-            runCatching { current.getDeclaredMethod("onResume") }
+            val currentClass: Class<*> = current
+            runCatching { currentClass.getDeclaredMethod("onResume") }
                 .getOrNull()
                 ?.let { return it }
-            current = current.superclass
+            current = currentClass.superclass
         }
         return runCatching { type.getMethod("onResume") }.getOrNull()
     }
@@ -84,10 +86,11 @@ internal object EmbeddedSettingsFragmentMethodResolver {
     ): Method? {
         var current: Class<*>? = type
         while (current != null) {
-            runCatching { current.getDeclaredMethod(name, *parameterTypes) }
+            val currentClass: Class<*> = current
+            runCatching { currentClass.getDeclaredMethod(name, *parameterTypes) }
                 .getOrNull()
                 ?.let { return it }
-            current = current.superclass
+            current = currentClass.superclass
         }
         return runCatching { type.getMethod(name, *parameterTypes) }.getOrNull()
     }
@@ -163,7 +166,7 @@ class HookEntry : XposedModule() {
                         val build = targetBuild(application)
                         if (!bootstrap.supports(build)) {
                             ModernXposedRuntime.log(
-                                "embedded build ${build.displayName} is unsupported; expected 6.5.1 (1583) or 6.5.2 (1586)",
+                                "embedded build ${build.displayName} is not com.apple.android.music; skipping",
                             )
                             return
                         }

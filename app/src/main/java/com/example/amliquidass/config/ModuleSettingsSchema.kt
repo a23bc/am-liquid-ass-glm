@@ -12,6 +12,9 @@ import com.example.amliquidass.model.ModuleSettings
  */
 internal object ModuleSettingsSchema {
 
+    private const val KEY_PHONE_LIQUID_GLASS = "phone_liquid_glass_enabled"
+    private const val KEY_SCHEMA_VERSION = "schema_version"
+
     fun decode(values: Map<String, *>): ModuleSettings = ModuleSettings(
         phoneLiquidGlassEnabled = values.boolean(KEY_PHONE_LIQUID_GLASS, default = true),
         schemaVersion = values.number(KEY_SCHEMA_VERSION) ?: ModuleConstants.CONFIG_SCHEMA_VERSION,
@@ -32,7 +35,4 @@ internal object ModuleSettingsSchema {
         this[key] as? Boolean ?: default
 
     private fun Map<String, *>.number(key: String): Int? = (this[key] as? Number)?.toInt()
-
-    private const val KEY_PHONE_LIQUID_GLASS = "phone_liquid_glass_enabled"
-    private const val KEY_SCHEMA_VERSION = "schema_version"
 }

@@ -2,6 +2,7 @@ package com.example.amliquidass.hook
 
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
@@ -62,7 +63,7 @@ internal object LiquidGlassEffect {
             val blur = RenderEffect.createBlurEffect(
                 DEFAULT_BLUR_RADIUS_PX,
                 DEFAULT_BLUR_RADIUS_PX,
-                RenderEffect.MODE_PRESET_DEFAULT,
+                Shader.TileMode.DECAL,
             )
             val refraction = buildRefractionEffect(view)
             view.setRenderEffect(RenderEffect.createChainEffect(refraction, blur))

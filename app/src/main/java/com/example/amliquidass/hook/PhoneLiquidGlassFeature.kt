@@ -37,12 +37,12 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.amliquidass.ModuleConstants
 import com.example.amliquidass.compose.LiquidBottomTab
 import com.example.amliquidass.compose.LiquidBottomTabs
@@ -200,12 +200,12 @@ private object PhoneLiquidGlassStyler {
         val owner = ComposeLifecycleOwner()
         return ComposeView(context).apply {
             tag = COMPOSE_TAG
-            // Use the static set() methods (not the deprecated Kotlin
-            // extension functions) to install the ViewTree owners — these
-            // have been the stable API since lifecycle 2.8.0.
-            ViewTreeLifecycleOwner.set(this, owner)
-            ViewTreeViewModelStoreOwner.set(this, owner)
-            ViewTreeSavedStateRegistryOwner.set(this, owner)
+            // Install the ViewTree owners via the Kotlin extension functions.
+            // The static ViewTree*Owner classes were removed in lifecycle 2.8.0;
+            // the extensions are the canonical API now.
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
             setContent {
                 MaterialTheme {
                     AmLiquidBottomBar(amTabs = amTabs)
